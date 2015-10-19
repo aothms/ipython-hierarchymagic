@@ -98,43 +98,48 @@ from IPython.core.display import display_png, display_svg
 from sphinx.ext.inheritance_diagram import InheritanceGraph
 
 
-def run_dot(code, options=[], format='png'):
+def run_dot(code, options=[], format='png', unflatten=False, unflatten_opts=['-l5', '-f', '-c5']):
     # mostly copied from sphinx.ext.graphviz.render_dot
     import os
     from subprocess import Popen, PIPE
     from sphinx.util.osutil import EPIPE, EINVAL
 
-    dot_args = ['dot'] + options + ['-T', format]
-    if os.name == 'nt':
+    def execute(args, code):
         # Avoid opening shell window.
         # * https://github.com/tkf/ipython-hierarchymagic/issues/1
         # * http://stackoverflow.com/a/2935727/727827
-        p = Popen(dot_args, stdout=PIPE, stdin=PIPE, stderr=PIPE,
-                  creationflags=0x08000000)
-    else:
-        p = Popen(dot_args, stdout=PIPE, stdin=PIPE, stderr=PIPE)
-    wentwrong = False
-    try:
-        # Graphviz may close standard input when an error occurs,
-        # resulting in a broken pipe on communicate()
-        stdout, stderr = p.communicate(code.encode('utf-8'))
-    except (OSError, IOError) as err:
-        if err.errno != EPIPE:
-            raise
-        wentwrong = True
-    except IOError as err:
-        if err.errno != EINVAL:
-            raise
-        wentwrong = True
-    if wentwrong:
-        # in this case, read the standard output and standard error streams
-        # directly, to get the error message(s)
-        stdout, stderr = p.stdout.read(), p.stderr.read()
-        p.wait()
-    if p.returncode != 0:
-        raise RuntimeError('dot exited with error:\n[stderr]\n{0}'
-                           .format(stderr.decode('utf-8')))
-    return stdout
+        kwargs = {'creationflags': 0x08000000} if os.name == 'nt' else {}
+        p = Popen(args, stdout=PIPE, stdin=PIPE, stderr=PIPE, **kwargs)
+
+        wentwrong = False
+        try:
+            # Graphviz may close standard input when an error occurs,
+            # resulting in a broken pipe on communicate()
+            try: code = code.encode('utf-8')
+            except: pass
+            stdout, stderr = p.communicate(code)
+        except (OSError, IOError) as err:
+            if err.errno != EPIPE:
+                raise
+            wentwrong = True
+        except IOError as err:
+            if err.errno != EINVAL:
+                raise
+            wentwrong = True
+        if wentwrong:
+            # in this case, read the standard output and standard error streams
+            # directly, to get the error message(s)
+            stdout, stderr = p.stdout.read(), p.stderr.read()
+            p.wait()
+        if p.returncode != 0:
+            raise RuntimeError('dot exited with error:\n[stderr]\n{0}'
+                               .format(stderr.decode('utf-8')))
+        return stdout
+    
+    if unflatten:
+        code = execute(['unflatten'] + unflatten_opts, code)    
+    
+    return execute(['dot'] + options + ['-T', format], code)
 
 
 @magics_class
